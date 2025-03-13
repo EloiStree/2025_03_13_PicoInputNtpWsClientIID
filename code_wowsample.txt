@@ -1,0 +1,254 @@
+import sys
+print("Hello World")
+print(f"sys.implementation: {sys.implementation}")
+print(f"sys.version: {sys.version}")
+print(f"sys.platform: {sys.platform}")
+
+
+
+import time
+import board
+import busio
+import pulseio
+import analogio
+import random
+import struct
+import digitalio
+import usb_hid
+import usb_midi
+import adafruit_midi
+import time
+import ssl
+import socketpool
+import wifi
+import adafruit_requests
+import os
+import ipaddress
+
+
+# IMPORT FROM NEAR FILE
+from hid_gamepad import Gamepad
+from wow_int import WowInt
+from hc_ttl import HCTTL
+from bluetooth_electronics_builder import BluetoothElectronicsBuilder
+
+# IMPORT FROM LIB ADAFRUIT
+from adafruit_midi.note_on import NoteOn
+from adafruit_midi.note_off import NoteOff
+from adafruit_hid.keyboard import Keyboard
+from adafruit_hid.keycode import Keycode
+#from keyboard_layout_fr import KeyboardLayoutFR  # Import the French layout
+from adafruit_hid.mouse import Mouse
+from adafruit_hid.consumer_control import ConsumerControl
+from adafruit_hid.consumer_control_code import ConsumerControlCode
+
+
+
+# 🐿️ If gamepad is not found in usb_hid.devices
+# Just reboot the device in boot mode and comeback.
+gamepad= Gamepad(usb_hid.devices)           # Start behaving as gamepad
+mouse  = Mouse(usb_hid.devices)             # Start behaving as mouse
+consumer = ConsumerControl(usb_hid.devices) # Start behaving as media control
+keyboard = Keyboard(usb_hid.devices)
+midi = adafruit_midi.MIDI(midi_in=usb_midi.ports[0], midi_out=usb_midi.ports[1], in_channel=0, out_channel=0)
+
+
+# 🐿️ If you want to use a button
+pin8 = digitalio.DigitalInOut(board.GP8)
+pin8.direction = digitalio.Direction.INPUT
+pin8.pull = digitalio.Pull.UP
+
+# 🐿️ If you want to use the laser
+pin7_laser = digitalio.DigitalInOut(board.GP7)
+pin7_laser.direction = digitalio.Direction.OUTPUT
+pin7_laser.value=True
+
+
+# 🐿️ If you want to use the joystick and a potentiometer
+pin_A27_XJoystick = analogio.AnalogIn(board.GP27)
+pin_A26_YJoystick = analogio.AnalogIn(board.GP26)
+pin_A28_ZJoystick = analogio.AnalogIn(board.GP28)
+
+# 🐿️ If you want to use the joystick button
+pin_D22_Button = digitalio.DigitalInOut(board.GP22)
+pin_D22_Button.direction = digitalio.Direction.INPUT
+pin_D22_Button.pull = digitalio.Pull.UP
+
+
+## 🐿️ Let's code it together
+use_learning_loop = True
+if use_learning_loop:
+
+    # Store the current and previous value to detect change
+    # Joystick
+    bool_is_joystick_left = False
+    bool_is_joystick_right = False
+    bool_is_joystick_up = False
+    bool_is_joystick_down = False
+    bool_is_joystick_left_previous = False
+    bool_is_joystick_right_previous = False
+    bool_is_joystick_up_previous = False
+    bool_is_joystick_down_previous = False
+    # Trigger
+    bool_is_trigger_down = False
+    bool_is_trigger_up = False
+    bool_is_trigger_down_previous = False
+    bool_is_trigger_up_previous = False
+    # Button
+    bool_is_button_down_previous = False
+    bool_is_button_down= False
+
+    # Joystick death zoner to detect left, right up, down are active
+    float_joystick_death_zone = 0.8
+    float_trigger_death_zone_start = 0.2
+    float_trigger_death_zone_stop = 0.8
+    while True:
+
+        # read and convert the value from the analog pin.
+        bool_print_joystick=False
+        joystick_x = pin_A27_XJoystick.value
+        joystick_y = pin_A26_YJoystick.value
+        joystick_x_127 = max(-127, min(127, int((joystick_x / 65535) * 254 - 127)))
+        joystick_y_127 = max(-127, min(127, int((joystick_y / 65535) * 254 - 127)))
+        joystick_y_percent = joystick_y_127 / 127.0
+        joystick_x_percent = joystick_x_127 / 127.0
+        trigger = pin_A28_ZJoystick.value
+        trigger_min=0
+        trigger_max=65535
+        trigger_255 = max(0, min(255, int((trigger - trigger_min) / (trigger_max - trigger_min) * 255)))
+        trigger_percent = trigger_255 / 255.0
+
+
+        # Set the value of the joystick and trigger for debugging purpose
+        gamepad.set_joystick_left_x_127(joystick_x_127)
+        gamepad.set_joystick_left_y_127(joystick_y_127)
+        gamepad.set_trigger_left_255(trigger_255)
+
+        # Check from the analog value if the zone are reached
+        bool_is_button_down = not pin_D22_Button.value
+        if joystick_x_percent < -float_joystick_death_zone:
+            bool_is_joystick_left = True
+            bool_is_joystick_right = False
+        elif joystick_x_percent > float_joystick_death_zone:
+            bool_is_joystick_left = False
+            bool_is_joystick_right = True
+        else:
+            bool_is_joystick_left = False
+            bool_is_joystick_right = False
+
+        if joystick_y_percent < -float_joystick_death_zone:
+            bool_is_joystick_up = True
+            bool_is_joystick_down = False
+        elif joystick_y_percent > float_joystick_death_zone:
+            bool_is_joystick_up = False
+            bool_is_joystick_down = True
+        else:
+            bool_is_joystick_up = False
+            bool_is_joystick_down = False
+
+
+        if trigger_percent > float_trigger_death_zone_stop:
+            bool_is_trigger_up = True
+        else:
+            bool_is_trigger_up = False
+
+
+        if trigger_percent <float_trigger_death_zone_start:
+            bool_is_trigger_down = True
+        else:
+            bool_is_trigger_down = False
+
+        # Check for any changed of zone
+        if bool_is_button_down != bool_is_button_down_previous:
+            bool_is_button_down_previous = bool_is_button_down
+            if bool_is_button_down:
+                print("Button Down Start")
+                gamepad.press_buttons(3)
+                # wow.push(1032)
+            else:
+                print("Button Down End")
+                gamepad.release_buttons(3)
+                # wow.push(2032)
+            bool_print_joystick=True
+
+        if bool_is_joystick_left != bool_is_joystick_left_previous:
+            bool_is_joystick_left_previous = bool_is_joystick_left
+            if bool_is_joystick_left:
+                print("Joystick Left Start")
+                gamepad.press_buttons(4)
+                # wow.push(1037)
+            else:
+                print("Joystick Left End")
+                gamepad.release_buttons(4)
+                # wow.push(2037)
+            bool_print_joystick=True
+
+        if bool_is_joystick_right != bool_is_joystick_right_previous:
+            bool_is_joystick_right_previous = bool_is_joystick_right
+            if bool_is_joystick_right:
+                print("Joystick Right Start")
+                gamepad.press_buttons(5)
+                # wow.push(1039)
+            else:
+                print("Joystick Right End")
+                gamepad.release_buttons(5)
+                # wow.push(2039)
+            bool_print_joystick=True
+
+        if bool_is_joystick_up != bool_is_joystick_up_previous:
+            bool_is_joystick_up_previous = bool_is_joystick_up
+            if bool_is_joystick_up:
+                print("Joystick Up Start")
+                gamepad.press_buttons(6)
+                # wow.push(1038)
+            else:
+                print("Joystick Up End")
+                gamepad.release_buttons(6)
+                # wow.push(2038)
+            bool_print_joystick=True
+
+        if bool_is_joystick_down != bool_is_joystick_down_previous:
+            bool_is_joystick_down_previous = bool_is_joystick_down
+            if bool_is_joystick_down:
+                print("Joystick Down Start")
+                gamepad.press_buttons(7)
+                # wow.push(1040)
+            else:
+                print("Joystick Down End")
+                gamepad.release_buttons(7)
+                # wow.push(2040)
+            bool_print_joystick=True
+
+
+        if bool_is_trigger_down != bool_is_trigger_down_previous:
+            bool_is_trigger_down_previous = bool_is_trigger_down
+            if bool_is_trigger_down:
+                print("Trigger Down Start")
+                gamepad.press_buttons(1)
+                # wow.push(1009)
+            else:
+                print("Trigger Down End")
+                gamepad.release_buttons(1)
+                # wow.push(2009)
+            bool_print_joystick=True
+
+        if bool_is_trigger_up != bool_is_trigger_up_previous:
+            bool_is_trigger_up_previous = bool_is_trigger_up
+            if bool_is_trigger_up:
+                print("Trigger Up Start")
+                gamepad.press_buttons(2)
+                # wow.push(1032)
+            else:
+                print("Trigger Up End")
+                gamepad.release_buttons(2)
+                # wow.push(2032)
+            bool_print_joystick=True
+
+
+        if bool_print_joystick:
+            print(f"Joystick x{joystick_x_127} y{joystick_y_127} / x{joystick_x} y{joystick_y}")
+            print(f"Trigger {trigger_255}  / {trigger}")
+
+
+        # Avoid excessive looping
+        time.sleep(0.00001)
