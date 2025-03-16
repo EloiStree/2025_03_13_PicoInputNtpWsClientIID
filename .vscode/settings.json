@@ -3,5 +3,13 @@
     "python.analysis.diagnosticSeverityOverrides": {
         "reportMissingModuleSource": "none",
         "reportShadowedImports": "none"
-    }
+    },
+    "python.analysis.extraPaths": [
+        "c:\\Users\\elois\\.vscode\\extensions\\wmerkens.vscode-circuitpython-v2-0.3.3\\boards\\0x239A\\0x8120",
+        "c:\\Users\\elois\\.vscode\\extensions\\wmerkens.vscode-circuitpython-v2-0.3.3\\stubs",
+        "c:\\Users\\elois\\AppData\\Roaming\\Code\\User\\globalStorage\\wmerkens.vscode-circuitpython-v2\\bundle\\20250314\\adafruit-circuitpython-bundle-py-20250314\\lib"
+    ],
+    "circuitpython.board.version": "9.2.0",
+    "circuitpython.board.vid": "0x239A",
+    "circuitpython.board.pid": "0x8120"
 }
